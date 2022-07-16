@@ -26,7 +26,6 @@ const rpc = {
     connected: false,
     blocks: {},
     sampleSize: args.sampleSize, // number of samples analized
-    // speedSize: [35, 60, 90, 100], // percent of blocks accepted for each speed
     timeInterval: args.timeInterval,
     minInterval: 100,
     maxInterval: 15000,
@@ -40,26 +39,6 @@ const rpc = {
             if (!(await this.loadRPC({ first: true }))) {
                 throw new Error('Network not available');
             }
-
-            // this.web3.setProvider(url[args.network]);
-            // this.web3.eth.extend({
-            //     property: 'txpool',
-            //     methods: [{
-            //         name: 'content',
-            //         call: 'txpool_content'
-            //     }, {
-            //         name: 'inspect',
-            //         call: 'txpool_inspect'
-            //     }, {
-            //         name: 'status',
-            //         call: 'txpool_status'
-            //     }]
-            // });
-    
-            // if (!(await this.testTxpool())){
-            //     process.stdout.write(`Current RPC endpoint does not expose Txpool.\n`);    
-            //     return false;
-            // }
 
             this.last = await this.web3.eth.getBlockNumber();
             this.connected = true;
@@ -240,7 +219,7 @@ const rpc = {
             let sortedBlocks = Object.keys(this.blocks).sort();
             if (block && block.transactions && block.number >= this.last) {
                 // save the block
-                this.recordBlock(block);
+                await this.recordBlock(block);
                 // call to update monited wallets. required only if want to monitor txs to target addresses
                 // db.updateWallets(block, args.network);
                 this.last = block.number + 1;
@@ -251,7 +230,7 @@ const rpc = {
 
                 let exBlock = this.getExistingBlock(sortedBlocks[0] - 1);
                 while (exBlock && sortedBlocks.length < this.sampleSize) {
-                    this.recordBlock(exBlock, true);
+                    await this.recordBlock(exBlock, true);
                     sortedBlocks = Object.keys(this.blocks).sort();
                     exBlock = this.getExistingBlock(sortedBlocks[0] - 1);
                 }
@@ -259,7 +238,7 @@ const rpc = {
                 // there is not a next block yet, fetch a previous block
                 const newblock = await this.getBlock(sortedBlocks[0] - 1);
                 if (newblock && newblock.transactions) {
-                    this.recordBlock(newblock);
+                    await this.recordBlock(newblock);
                 }
 
                 fetchState = -1;
@@ -277,7 +256,30 @@ const rpc = {
         }
     },
 
-    recordBlock: function(block, cache=false) {
+    extractGasFromBlock: async function(block) {
+        // must get gas price differently when L2
+        if (args.network == 'arbitrum') {
+            const transactions = await Promise.all(block.transactions.filter(t => t.gasPrice && t.gasPrice != '0').map(async tx => {
+                // get receipt from tx
+                const receipt = await this.getTx(tx.hash, true);
+                return {
+                    gasPrice: parseFloat(this.web3.utils.fromWei(receipt.effectiveGasPrice.toString(), 'gwei')),
+                    gasUsed: parseInt(receipt.gasUsed),
+                };
+            }).sort((a,b) => a - b));
+            return [
+                transactions.map(e => e.gasPrice),
+                transactions.reduce((p,c) => p + c.gasUsed, 0),
+            ]
+        }
+
+        return [
+            block.transactions.filter(t => t.gasPrice && t.gasPrice != '0').map(t => parseFloat(this.web3.utils.fromWei(t.gasPrice, 'gwei'))).sort((a,b) => a - b),
+            parseInt(block.gasUsed),
+        ];
+    },
+
+    recordBlock: async function(block, cache=false) {
         if (cache) {
             this.blocks[block.number] = {
                 ntx: block.ntx,
@@ -293,9 +295,10 @@ const rpc = {
         }
         else {
             // extract the gas from transactions
-            const transactions = block.transactions.filter(t => t.gasPrice && t.gasPrice != '0').map(t => parseFloat(this.web3.utils.fromWei(t.gasPrice, 'gwei'))).sort((a,b) => a - b);
+            const [ gasPrice, gasUsed ] = await this.extractGasFromBlock(block);
+            // console.log(gasPrice, gasUsed);
             this.blocks[block.number] = {
-                ntx: transactions.length,
+                ntx: gasPrice.length,
                 timestamp: block.timestamp,
                 minGwei: [],
                 avgGas: [],
@@ -305,11 +308,10 @@ const rpc = {
                 this.blocks[block.number].baseFee = block.baseFee;
             }
 
-            if (transactions.length){
+            if (gasPrice.length){
                 // set average gas per tx in the block
-                const avgGas = parseInt(block.gasUsed) / transactions.length;
-                this.blocks[block.number].minGwei = transactions;
-                this.blocks[block.number].avgGas = avgGas;
+                this.blocks[block.number].minGwei = gasPrice;
+                this.blocks[block.number].avgGas = gasUsed / gasPrice.length;
             }
         }
 
@@ -322,7 +324,7 @@ const rpc = {
             console.log(`${new Date().toISOString()}: New block ${block.number} read. Next update: ${this.timeInterval.toFixed(1)}ms`);
             // console.log(`Time: elapsed: ${new Date().getTime() - this.time}`);
         }
-        else{
+        else if (!this.warmupCompleted){
             // pretty progress bar
             const barSize = 50;
             const filledBars = parseInt(sortedBlocks.length / this.sampleSize * barSize);
@@ -335,6 +337,10 @@ const rpc = {
             else{
                 console.log(`[${barString}] ${sortedBlocks.length} / ${this.sampleSize}`);
                 // process.stdout.write(`\r[${barString}] ${sortedBlocks.length} / ${this.sampleSize}`);
+            }
+
+            if (sortedBlocks.length >= this.sampleSize) {
+                this.warmupCompleted = true;
             }
         }
     },
@@ -373,7 +379,7 @@ const rpc = {
         }
 
         // there is no such block in cache
-        if (num <= stats.lastBlock - stats.ntx.length || num > stats.lastBlock){
+        if (!stats || !stats.ntx || num <= stats.lastBlock - stats.ntx.length || num > stats.lastBlock){
             return false;
         }
 
@@ -384,40 +390,6 @@ const rpc = {
         block.number = num;
         return block;
     },
-
-    // if you want the oracle to return directly the speeds
-    // calcSpeeds: function(){
-    //     // sort blocks by timestamp, then remove blocks with no tx
-    //     const b = Object.values(this.blocks).sort((a,b) => a.timestamp - b.timestamp).filter(e => e.ntx);
-        
-    //     const avgTx = b.map(e => e.ntx).reduce((p,c) => p+c, 0) / b.length;
-    //     // avg time between the sample
-    //     const avgTime = (b.slice(-1)[0].timestamp - b[0].timestamp) / (b.length - 1);
-        
-    //     // sort gwei array ascending so I can pick directly by index
-    //     const sortedGwei = b.map(e => e.minGwei).sort((a,b) => parseFloat(a) - parseFloat(b));
-    //     const speeds = this.speedSize.map(speed => {
-    //         // get gwei corresponding to the slice of the array
-    //         const poolIndex = parseInt(speed / 100 * b.length) - 1;
-    //         const speedGwei = sortedGwei[poolIndex];
-
-    //         // get average time for each speed
-    //         const accepted = b.filter(e => e.minGwei <= speedGwei);
-    //         const avgTime = (accepted.slice(-1)[0].timestamp - accepted[0].timestamp) / (accepted.length - 1);
-
-    //         return speedGwei;
-    //     });
-
-    //     const result = {
-    //         lastBlock: this.last,
-    //         avgTime: avgTime,
-    //         avgTx: avgTx,
-    //         speeds: speeds,
-    //     }
-
-    //     fs.writeFileSync(`${__dirname}/predicted_gwei.json`, JSON.stringify(result));
-    //     return result;
-    // },
 
     dynamicInterval: function(state) {
         const speedFactor = 1.1;
@@ -440,115 +412,10 @@ const rpc = {
     
         return this.timeInterval;
     },
-    
-
-    // testing methods
-
-    // testTxpool: async function(){
-    //     try {
-    //         const test = await this.web3.eth.txpool.status();
-    //         if (test.pending){
-    //             return true;
-    //         }
-    //     }
-    //     catch(error) {
-    //         return false;
-    //     }
-    //     return false;
-    // },
-
-    // getTxPool: async function(){
-    //     // get transaction hash and gwei from txpool
-    //     try {
-    //         const content = await this.web3.eth.txpool.content();
-    //         const transactions = [];
-    //         Object.values(content).forEach(type => {
-    //             Object.values(type).forEach(from => {
-    //                 transactions.push(...Object.values(from).map(e => { return {
-    //                     hash: e.hash,
-    //                     gasPrice: parseFloat(this.web3.utils.fromWei(e.gasPrice, 'gwei')),
-    //                 }}));
-    //             });
-    //         });
-    //         // console.log(content);
-    //         return transactions;
-    //     }
-    //     catch(error){
-    //         console.log('error');
-    //         return new Error(error);
-    //     }
-    // },
-
-    // calc: async function(){
-    //     const nBlocks = 200;
-    //     const poolPromise = this.getTxPool();
-    //     let predicted = JSON.parse(fs.readFileSync(`${__dirname}/predicted_gwei.json`));
-
-    //     // wait until you have X blocks ahead of the txpool we are looking at
-    //     const waitBlocks = async target => {
-    //         predicted = JSON.parse(fs.readFileSync(`${__dirname}/predicted_gwei.json`));
-    //         const lastBlock = parseInt(predicted.lastBlock);
-
-    //         if (lastBlock >= target){
-    //             return true;
-    //         }
-    //         process.stdout.write(`\rWaiting on block ${target}. Now: ${lastBlock}`);
-    //         return await new Promise(resolve => setTimeout(async () => resolve(await waitBlocks(target)), 1000));
-    //     }
-
-    //     console.log('Waiting for blocks...');
-    //     await waitBlocks(parseInt(predicted.lastBlock) + nBlocks);        
-    //     console.log('\nWaiting for Txpool...');
-    //     const pool = await poolPromise;
-        
-    //     if (!Array.isArray(pool)){
-    //         console.log('Error retrieving txpool');
-    //         return;
-    //     }
-
-    //     const speeds = [...predicted.speeds, 10000000];
-
-    //     // get last X blocks
-    //     const blocks = JSON.parse(fs.readFileSync(`${__dirname}/blocks.json`));
-    //     const minedTransactions = speeds.map(e => []);
-    //     Object.values(blocks).slice(-nBlocks).forEach((block,ib) => {
-    //         // save only transactions mined fitting each gas price
-    //         block.transactions.forEach(transaction => {
-    //             speeds.forEach((speed,is) => {
-    //                 if (!minedTransactions[is][ib]){
-    //                     minedTransactions[is][ib] = [];
-    //                 }
-    //                 if (transaction.gasPrice <= speed){
-    //                     minedTransactions[is][ib].push(transaction.hash);
-    //                 }
-    //             });
-    //         });
-    //     });
-
-    //     // console.log(...minedTransactions);
-        
-    //     const minedPool = speeds.map(e => []);
-    //     pool.forEach(transaction => {
-    //         minedTransactions.forEach((speed,is) => {
-    //             speed.forEach((block,ib) => {
-    //                 if (!minedPool[is][ib]){
-    //                     minedPool[is][ib] = [];
-    //                 }
-    //                 if (block.includes(transaction.hash)){
-    //                     minedPool[is][ib].push(transaction.hash);
-    //                 }
-    //             });
-    //         })
-    //     });
-
-    //     fs.writeFileSync(`${__dirname}/predict_time.json`, JSON.stringify(minedPool.map(e => e.map(e => e.length))));
-    //     console.log('DONE')
-    // }
 };
 
 rpc.connect().then(async () => {
     rpc.loop();
-    // const block = await rpc.getBlock(67790070, true);
-    // const block = await rpc.getBlock('0x5cc6b8b7c957db58b0958dd7fa567cff58a0e94e25adf8a6344eb5efef36e99c', true);
-    // console.log(block);
+    // const receipt = await rpc.getTx('0xb02290e8143710cd3f945042a8509edaebf65f0186d54395a722a63e5e8a01d1', true);
+    // console.log(receipt);
 }, console.log);

@@ -60,5 +60,6 @@
         "https://rpc.fuse.io",
         "https://fuse-rpc.gateway.pokt.network"
     ],
-    "aurora": "https://mainnet.aurora.dev"
+    "aurora": "https://mainnet.aurora.dev",
+    "arbitrum": "https://arb1.arbitrum.io/rpc"
 }
