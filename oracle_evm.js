@@ -259,18 +259,24 @@ const rpc = {
     extractGasFromBlock: async function(block) {
         // must get gas price differently when L2
         if (args.network == 'arbitrum') {
-            // get gas fee from a single L2 tx
-            const getFee = async tx => {
-                // get receipt
+            const transactions = await Promise.all(block.transactions.filter(t => t.gasPrice && t.gasPrice != '0').map(async tx => {
+                // get receipt from tx
                 const receipt = await this.getTx(tx.hash, true);
-                const value = parseInt(receipt.effectiveGasPrice) * parseInt(receipt.gasUsed);
-                return this.web3.utils.fromWei(value.toString(), 'ether');
-            }
-
-            return await Promise.all(block.transactions.filter(t => t.gasPrice && t.gasPrice != '0').map(async t => parseFloat(await getFee(t))).sort((a,b) => a - b));
+                return {
+                    gasPrice: parseFloat(this.web3.utils.fromWei(receipt.effectiveGasPrice.toString(), 'gwei')),
+                    gasUsed: parseInt(receipt.gasUsed),
+                };
+            }).sort((a,b) => a - b));
+            return [
+                transactions.map(e => e.gasPrice),
+                transactions.reduce((p,c) => p + c.gasUsed, 0),
+            ]
         }
 
-        return block.transactions.filter(t => t.gasPrice && t.gasPrice != '0').map(t => parseFloat(this.web3.utils.fromWei(t.gasPrice, 'gwei'))).sort((a,b) => a - b);
+        return [
+            block.transactions.filter(t => t.gasPrice && t.gasPrice != '0').map(t => parseFloat(this.web3.utils.fromWei(t.gasPrice, 'gwei'))).sort((a,b) => a - b),
+            parseInt(block.gasUsed),
+        ];
     },
 
     recordBlock: async function(block, cache=false) {
@@ -289,10 +295,10 @@ const rpc = {
         }
         else {
             // extract the gas from transactions
-            const transactions = await this.extractGasFromBlock(block);
-            console.log(transactions)
+            const [ gasPrice, gasUsed ] = await this.extractGasFromBlock(block);
+            // console.log(gasPrice, gasUsed);
             this.blocks[block.number] = {
-                ntx: transactions.length,
+                ntx: gasPrice.length,
                 timestamp: block.timestamp,
                 minGwei: [],
                 avgGas: [],
@@ -302,11 +308,10 @@ const rpc = {
                 this.blocks[block.number].baseFee = block.baseFee;
             }
 
-            if (transactions.length){
+            if (gasPrice.length){
                 // set average gas per tx in the block
-                const avgGas = parseInt(block.gasUsed) / transactions.length;
-                this.blocks[block.number].minGwei = transactions;
-                this.blocks[block.number].avgGas = avgGas;
+                this.blocks[block.number].minGwei = gasPrice;
+                this.blocks[block.number].avgGas = gasUsed / gasPrice.length;
             }
         }
 
@@ -319,7 +324,7 @@ const rpc = {
             console.log(`${new Date().toISOString()}: New block ${block.number} read. Next update: ${this.timeInterval.toFixed(1)}ms`);
             // console.log(`Time: elapsed: ${new Date().getTime() - this.time}`);
         }
-        else{
+        else if (!this.warmupCompleted){
             // pretty progress bar
             const barSize = 50;
             const filledBars = parseInt(sortedBlocks.length / this.sampleSize * barSize);
@@ -332,6 +337,10 @@ const rpc = {
             else{
                 console.log(`[${barString}] ${sortedBlocks.length} / ${this.sampleSize}`);
                 // process.stdout.write(`\r[${barString}] ${sortedBlocks.length} / ${this.sampleSize}`);
+            }
+
+            if (sortedBlocks.length >= this.sampleSize) {
+                this.warmupCompleted = true;
             }
         }
     },
@@ -370,7 +379,7 @@ const rpc = {
         }
 
         // there is no such block in cache
-        if (num <= stats.lastBlock - stats.ntx.length || num > stats.lastBlock){
+        if (!stats || !stats.ntx || num <= stats.lastBlock - stats.ntx.length || num > stats.lastBlock){
             return false;
         }
 
@@ -407,4 +416,6 @@ const rpc = {
 
 rpc.connect().then(async () => {
     rpc.loop();
+    // const receipt = await rpc.getTx('0xb02290e8143710cd3f945042a8509edaebf65f0186d54395a722a63e5e8a01d1', true);
+    // console.log(receipt);
 }, console.log);
