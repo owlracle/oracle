@@ -353,6 +353,7 @@ const rpc = {
         // sort blocks by timestamp, then remove blocks with no tx
         const b = Object.values(this.blocks).sort((a,b) => a.timestamp - b.timestamp).filter(e => e.ntx);
 
+        // TODO: harmony is returning 0 txs in several blocks. The oracle does not record the block, so it marks as lagging.
         if (!b || !b[0]) {
             return false;
         }

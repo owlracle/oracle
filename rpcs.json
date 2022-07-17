@@ -45,7 +45,6 @@
     "harmony": [
         "https://api.harmony.one",
         "https://harmony-0-rpc.gateway.pokt.network",
-        "https://s2.api.harmony.one",
         "https://sin.api.harmony.one"
     ],
     "heco": [

@@ -159,6 +159,7 @@ const rpc = {
             this.blocks[block.number].minGwei = transactions;
             this.blocks[block.number].avgGas = avgGas;
         }
+        // console.log(block.transactions.length)
 
         // sort the blocks and discard if higher than sampleSize
         const sortedBlocks = Object.keys(this.blocks).sort((a,b) => parseInt(a) - parseInt(b));
@@ -176,6 +177,9 @@ const rpc = {
     calcBlockStats: function(){
         // sort blocks by timestamp, then remove blocks with no tx
         const b = Object.values(this.blocks).sort((a,b) => a.timestamp - b.timestamp).filter(e => e.ntx);
+        // console.log(this.blocks)
+        if (!b.length) return false;
+        
         const lastBlock = Math.max(...Object.keys(this.blocks));
 
         // reshape blocks object to be arrays of each field
