@@ -4,12 +4,14 @@
         "https://rpc-mainnet.matic.network",
         "https://rpc-mainnet.maticvigil.com",
         "https://rpc-mainnet.matic.quiknode.pro",
-        "https://matic-mainnet.chainstacklabs.com"
+        "https://matic-mainnet.chainstacklabs.com",
+        "https://rpc.ankr.com/polygon"
     ],
     "ethereum": [
         "https://mainnet.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161",
         "https://main-light.eth.linkpool.io",
-        "https://rpc.ankr.com/eth"
+        "https://rpc.ankr.com/eth",
+        "https://eth-rpc.gateway.pokt.network"
     ],
     "bsc": [
         "https://bsc-dataseed.binance.org",
@@ -19,7 +21,8 @@
     ],
     "avax": [
         "https://api.avax.network/ext/bc/C/rpc",
-        "https://rpc.ankr.com/avalanche"
+        "https://rpc.ankr.com/avalanche",
+        "https://avax-mainnet.gateway.pokt.network/v1/lb/605238bf6b986eea7cf36d5e/ext/bc/C/rpc"
     ],
     "fantom": [
         "https://rpc.ftm.tools",
@@ -45,7 +48,8 @@
     "harmony": [
         "https://api.harmony.one",
         "https://harmony-0-rpc.gateway.pokt.network",
-        "https://sin.api.harmony.one"
+        "https://sin.api.harmony.one",
+        "https://rpc.ankr.com/harmony"
     ],
     "heco": [
         "https://http-mainnet.hecochain.com",
@@ -60,5 +64,8 @@
         "https://fuse-rpc.gateway.pokt.network"
     ],
     "aurora": "https://mainnet.aurora.dev",
-    "arbitrum": "https://arb1.arbitrum.io/rpc"
+    "arbitrum": [
+        "https://arb1.arbitrum.io/rpc",
+        "https://rpc.ankr.com/arbitrum"
+    ]
 }
