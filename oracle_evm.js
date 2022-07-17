@@ -96,7 +96,12 @@ const rpc = {
             // console.log(lastBlocks)
             // filter only non-error rpcs
             // sort ascending and get first = best rpc
-            return lastBlocks.filter(e => !e.error).sort((a,b) => b.lastBlock - a.lastBlock)[0];
+            const valid = lastBlocks.filter(e => !e.error);
+            if (!valid || !valid.length) {
+                console.log('No valid RPC. :(');
+                return false;
+            }
+            return valid.sort((a,b) => b.lastBlock - a.lastBlock)[0];
         }
 
         if (first) {
@@ -115,10 +120,15 @@ const rpc = {
 
         const loadBestRPC = async () => {
             const bestRPC = await getBestRPC();
+            if (!bestRPC) {
+                await loadBestRPC();
+                return;
+            }
             this.web3 = new Web3(bestRPC.rpc);
             this.rpc = bestRPC.rpc;
             this.last = bestRPC.lastBlock;
             this.timeInterval = args.timeInterval;
+            return;
         }
 
         // this is the first time run
@@ -155,8 +165,11 @@ const rpc = {
             return block;
         }
         catch(error){
-            // console.log(error);
-            return new Error(error);
+            console.log(error);
+            // return new Error(error);
+            console.log('Error fetching block. Reloading RPC, then retrying...');
+            await this.loadRPC();
+            return await this.getBlock(num);
         }
     },
 
@@ -262,7 +275,7 @@ const rpc = {
             const transactions = await Promise.all(block.transactions.filter(t => t.gasPrice && t.gasPrice != '0').map(async tx => {
                 // get receipt from tx
                 const receipt = await this.getTx(tx.hash, true);
-                if (!receipt.effectiveGasPrice || !receipt.gasUsed) {
+                if (!receipt || !receipt.effectiveGasPrice || !receipt.gasUsed) {
                     return false;
                 }
 
