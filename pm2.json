@@ -56,24 +56,14 @@
             "args"        : "-n fuse -t 2300"
         },
         {
-            "name"        : "oracle_cosmoshub",
-            "script"      : "./oracle_cosmos.js",
-            "args"        : "-n cosmoshub -t 7000"
-        },
-        {
-            "name"        : "oracle_osmosis",
-            "script"      : "./oracle_cosmos.js",
-            "args"        : "-n osmosis -t 10000"
-        },
-        {
-            "name"        : "oracle_juno",
-            "script"      : "./oracle_cosmos.js",
-            "args"        : "-n juno -t 7000"
-        },
-        {
             "name"        : "oracle_aurora",
             "script"      : "./oracle_evm.js",
             "args"        : "-n aurora -t 500"
+        },
+        {
+            "name"        : "oracle_arbitrum",
+            "script"      : "./oracle_evm.js",
+            "args"        : "-n arbitrum -t 1000"
         },
         {
             "name"        : "oracle_server",
