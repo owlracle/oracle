@@ -262,11 +262,15 @@ const rpc = {
             const transactions = await Promise.all(block.transactions.filter(t => t.gasPrice && t.gasPrice != '0').map(async tx => {
                 // get receipt from tx
                 const receipt = await this.getTx(tx.hash, true);
+                if (!receipt.effectiveGasPrice || !receipt.gasUsed) {
+                    return false;
+                }
+
                 return {
                     gasPrice: parseFloat(this.web3.utils.fromWei(receipt.effectiveGasPrice.toString(), 'gwei')),
                     gasUsed: parseInt(receipt.gasUsed),
                 };
-            }).sort((a,b) => a - b));
+            }).filter(e => e).sort((a,b) => a - b));
             return [
                 transactions.map(e => e.gasPrice),
                 transactions.reduce((p,c) => p + c.gasUsed, 0),
