@@ -285,8 +285,8 @@ const rpc = {
                 };
             }).filter(e => e).sort((a,b) => a - b));
             return [
-                transactions.map(e => e.gasPrice),
-                transactions.reduce((p,c) => p + c.gasUsed, 0),
+                transactions.map(e => e.gasPrice).filter(e => e),
+                transactions.filter(e => e.gasUsed).reduce((p,c) => p + c.gasUsed, 0),
             ]
         }
 
